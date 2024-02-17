@@ -1,0 +1,1079 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>Annotation Creator</title>
+    <style>
+      body {
+        background-color: rgb(104, 104, 104);
+        margin: 0px;
+      }
+
+      #myImage {
+        width: auto;
+        height: auto;
+      }
+
+      .mark {
+        position: absolute;
+        width: 20px;
+        height: 20px;
+        background-color: red;
+        cursor: pointer;
+      }
+
+      .mark-number {
+        color: rgb(226, 238, 158);
+        text-align: center;
+        font-weight: bold;
+      }
+      .rectangle {
+        position: absolute;
+        border: 2px solid #009688;
+        background-color: #009688;
+        cursor: pointer;
+        transform-origin: center;
+      }
+
+      .rotate-icon {
+        position: absolute;
+        top: 0;
+        right: 0;
+        width: 30px;
+        height: 30px;
+        background-color: #2ecc71;
+        cursor: grab;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+      }
+      .resize-button {
+        background-color: #ddd;
+      }
+      .resize-button.active {
+        background-color: yellow;
+      }
+      .color-square {
+        display: inline-block;
+        width: 16px;
+        height: 16px;
+        margin-right: 4px;
+        border: 1px solid #000;
+      }
+      .area-info {
+        margin-top: 10px;
+      }
+
+      #addButton.active,
+      #removeButton.active {
+        background-color: lightcoral;
+        color: white;
+      }
+    </style>
+  </head>
+
+  <body>
+    <table style="border-width: 0px">
+      <tr style="border-width: 0px">
+        <td style="border-width: 0px">
+          <img
+            id="myImage"
+            src="https://i.pinimg.com/736x/df/15/78/df1578844b60e0a23f352e266a1e7e1f.jpg"
+            alt="Your Image"
+          />
+          <br />
+          <input type="text" id="areaName" placeholder="Enter Area Name" />
+          <button onclick="addRectangle()">Add Rectangle</button>
+          <button id="resizeBtn" onclick="toggleResize()">Resize</button>
+          <button onclick="saveRectangles()">Save</button>
+          <button onclick="displayArea()">Remove Area</button>
+          <div id="markContainer"></div>
+          <p id="positionInfo"></p>
+          <button id="addButton">Add Mark</button> :
+          <button id="redButton">Red : defect1</button>
+          <button id="greenButton">Green : defect2</button>
+          <button id="blueButton">Blue : defect3</button>
+          <br />
+          <button id="saveButton">Save Annotation</button>
+          <button id="removeButton">Remove Mark</button>
+          <button id="clearButton">Clear</button>
+          <br />
+          <button id="allDefects">All Defects</button> :
+          <button id="filterRedButton">Filter Red</button>
+          <button id="filterGreenButton">Filter Green</button>
+          <button id="filterBlueButton">Filter Blue</button>
+          <br />
+          <button id="circleButton">Diamond</button>
+          <button id="squareButton">Square</button>
+          <br />
+          <div id="areaInfo" class="area-info"></div>
+        </td>
+        <td style="border-width: 0px">
+          <table
+            id="detailsTable"
+            style="border-width: 1; border-style: solid; border-color: aqua"
+          >
+            <thead>
+              <tr>
+                <th>Index</th>
+                <th>Color</th>
+                <th>Shape</th>
+                <th>Rectangle</th>
+              </tr>
+            </thead>
+            <tbody id="detailsTableBody"></tbody>
+          </table>
+        </td>
+      </tr>
+    </table>
+    <script>
+      let marks = []; // Array to store the marks
+      let addingMarks = false; // Enable adding marks
+      let removingMarks = false; // Enable removing marks
+      let selectedColor = "red"; // Default color
+      let selectedShape = "square"; // Default shape
+
+      let rectangles = [];
+      let areaNames = [];
+      let selectedRectangle = null;
+      let resizing = false;
+      let startX, startY, startOffsetX, startOffsetY, startAngle;
+      let resizeButton = document.getElementById("resizeBtn");
+      let areaNameInput = document.getElementById("areaName");
+      let areaInfoDiv = document.getElementById("areaInfo");
+      let deletedAreaName;
+      let deletedAreaNameBool = false;
+
+      // Function to update the details table
+      function updateDetailsTable() {
+        let detailsTableBody = document.getElementById("detailsTableBody");
+        detailsTableBody.innerHTML = ""; // Clear existing rows
+
+        var areaNames = JSON.parse(localStorage.getItem("areaNames"));
+
+        // Iterate through marks and add rows to the table
+        marks.forEach((mark, index) => {
+          let row = detailsTableBody.insertRow();
+          let cellIndex = row.insertCell(0);
+          let cellColor = row.insertCell(1);
+          let cellShape = row.insertCell(2);
+          let cellRectangle = row.insertCell(3);
+
+          // Populate cells with mark details
+          cellIndex.innerHTML = index + 1;
+          cellColor.innerHTML = mark.color;
+          cellShape.innerHTML = mark.shape;
+
+          // Create a dropdown for the "Rectangle" cell
+          let dropdown = document.createElement("select");
+          dropdown.id = "areaDropdown" + index; // Ensure unique IDs
+          areaNames.forEach((areaName) => {
+            let option = document.createElement("option");
+            option.value = areaName;
+            option.text = areaName;
+            dropdown.add(option);
+          });
+          dropdown.value = mark.areaName; // Set the selected value based on the mark's areaName
+
+          // Add event listener to update the selected value
+          dropdown.addEventListener("change", function () {
+            // Update the selected value in the marks array
+            marks[index].areaName = this.value;
+
+            // Save the updated marks array in local storage
+            localStorage.setItem("marks", JSON.stringify(marks));
+            // saveMarks();
+          });
+
+          cellRectangle.appendChild(dropdown);
+        });
+      }
+
+      // Function to generate a random string
+      function generateRandomString(length) {
+        let result = "";
+        let characters =
+          "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
+        let charactersLength = characters.length;
+        for (let i = 0; i < length; i++) {
+          result += characters.charAt(
+            Math.floor(Math.random() * charactersLength)
+          );
+        }
+        return result;
+      }
+
+      // Function to save marks to local storage
+      function saveMarks() {
+        localStorage.setItem("marks", JSON.stringify(marks));
+        console.log("Marks saved to local storage");
+      }
+
+      // Function to load marks from local storage
+      function loadMarks() {
+        let savedMarks = localStorage.getItem("marks");
+        if (savedMarks) {
+          marks = JSON.parse(savedMarks);
+
+          // Clear marks on the screen
+          document.getElementById("markContainer").innerHTML = "";
+
+          // to use when the annotation creation area and the poplate area is different
+          // let imageRect = document
+          //   .getElementById("myImage")
+          //   .getBoundingClientRect();
+          // let imageOffsetX =
+          //   imageRect.left - document.body.getBoundingClientRect().left;
+          // let imageOffsetY =
+          //   imageRect.top - document.body.getBoundingClientRect().top;
+
+          // console.log("offset", imageOffsetX, imageOffsetY);
+          // Add marks to the mark container
+          marks.forEach((mark, index) => {
+            let newMark = document.createElement("div");
+            newMark.className = "mark";
+            newMark.style.backgroundColor = mark.color;
+            newMark.style.left = mark.x + "px";
+            newMark.style.top = mark.y + "px";
+            newMark.id = mark.id;
+
+            // Set the shape based on the loaded mark's shape property
+            if (mark.shape === "diamond") {
+              newMark.style.transform = "rotate(45deg)";
+            } else if (mark.shape === "square") {
+              // Default square shape
+            }
+
+            // Create a span element for the number
+            let numberSpan = document.createElement("span");
+            numberSpan.className = "mark-number";
+            numberSpan.textContent = index + 1; // Set the number
+            numberSpan.setAttribute("data-mark-id", mark.id); // Add a data attribute to link it with the mark
+
+            // Set the position of the number span inside the mark
+            numberSpan.style.position = "absolute";
+            numberSpan.style.left = "50%"; // Center the number horizontally
+
+            // Adjust the top position for centering in a diamond
+            if (mark.shape === "diamond") {
+              numberSpan.style.top = "50%";
+              numberSpan.style.transform =
+                "translate(-50%, -50%) rotate(-45deg)";
+            } else {
+              numberSpan.style.top = "50%"; // Center the number vertically
+              numberSpan.style.transform = "translate(-50%, -50%)";
+            }
+
+            // Append the span to the mark
+            newMark.appendChild(numberSpan);
+
+            // Append the mark to the markContainer
+            document.getElementById("markContainer").appendChild(newMark);
+          });
+
+          console.log("Marks loaded from local storage:", marks);
+        } else {
+          console.log("No saved marks found");
+        }
+      }
+
+      // Function to manage buttons
+      function handleButtonState(button, addClass, removeClass) {
+        button.addEventListener("click", function () {
+          console.log(`${button.id} button clicked`);
+          addingMarks = addClass === "add"; // Example: addClass = "add"
+          removingMarks = addClass === "remove"; // Example: removeClass = "remove"
+          button.classList.add("active");
+          document.getElementById(removeClass).classList.remove("active");
+        });
+      }
+
+      function filterMarksByColor(color) {
+        // Clear marks on the screen
+        document.getElementById("markContainer").innerHTML = "";
+
+        // Filter and display marks of the selected color
+        marks
+          .filter((mark) => mark.color === color)
+          .forEach((mark) => {
+            let filteredMark = document.createElement("div");
+            filteredMark.className = "mark";
+            filteredMark.style.backgroundColor = mark.color;
+            filteredMark.style.left = mark.x + "px";
+            filteredMark.style.top = mark.y + "px";
+            filteredMark.id = mark.id;
+
+            // Set the shape based on the loaded mark's shape property
+            if (mark.shape === "diamond") {
+              filteredMark.style.transform = "rotate(45deg)";
+            } else if (mark.shape === "square") {
+              // Default square shape
+            }
+
+            // Create a span element for the number
+            let numberSpan = document.createElement("span");
+            numberSpan.className = "mark-number";
+            numberSpan.textContent = mark.number; // Use the existing number
+            numberSpan.setAttribute("data-mark-id", mark.id); // Add a data attribute to link it with the mark
+
+            // Set the position of the number span inside the mark
+            numberSpan.style.position = "absolute";
+            numberSpan.style.left = "50%"; // Center the number horizontally
+
+            // Adjust the top position for centering in a diamond
+            if (mark.shape === "diamond") {
+              numberSpan.style.top = "50%";
+              numberSpan.style.transform =
+                "translate(-50%, -50%) rotate(-45deg)";
+            } else {
+              numberSpan.style.top = "50%"; // Center the number vertically
+              numberSpan.style.transform = "translate(-50%, -50%)";
+            }
+
+            // Append the span to the mark
+            filteredMark.appendChild(numberSpan);
+
+            // Append the mark to the markContainer
+            document.getElementById("markContainer").appendChild(filteredMark);
+          });
+
+        console.log(`Filtered marks by color: ${color}`);
+      }
+
+      // Function to display all marks
+      function displayAllMarks(singleColor) {
+        // Clear marks on the screen
+        document.getElementById("markContainer").innerHTML = "";
+
+        // Display all marks with the specified color
+        marks.forEach((mark) => {
+          let allMark = document.createElement("div");
+          allMark.className = "mark";
+
+          // Use the specified singleColor for all marks
+          allMark.style.backgroundColor = singleColor;
+
+          allMark.style.left = mark.x + "px";
+          allMark.style.top = mark.y + "px";
+
+          // Set the shape based on the loaded mark's shape property
+          if (mark.shape === "diamond") {
+            allMark.style.transform = "rotate(45deg)";
+          } else if (mark.shape === "square") {
+            // Default square shape
+          }
+
+          document.getElementById("markContainer").appendChild(allMark);
+        });
+
+        console.log("Displaying all marks with color: " + singleColor);
+      }
+
+      // Numbers within the marks
+      function updateMarkNumbers() {
+        // Update the number property for each mark in the array
+        marks.forEach((mark, index) => {
+          mark.number = index + 1;
+
+          // Update the corresponding number span text
+          let numberSpan = document.querySelector(
+            `.mark-number[data-mark-id="${mark.id}"]`
+          );
+          if (numberSpan) {
+            numberSpan.textContent = mark.number;
+          }
+        });
+
+        // Log the updated marks array
+        console.log("Updated marks array:", marks);
+      }
+
+      // Add button
+      let addButton = document.getElementById("addButton");
+      handleButtonState(addButton, "add", "removeButton");
+
+      // Remove button
+      let removeButton = document.getElementById("removeButton");
+      handleButtonState(removeButton, "remove", "addButton");
+
+      // Save button
+      let saveButton = document.getElementById("saveButton");
+      saveButton.addEventListener("click", saveMarks);
+
+      let clearButton = document.getElementById("clearButton");
+      clearButton.addEventListener("click", function () {
+        // Clear marks on the screen
+        document.getElementById("markContainer").innerHTML = "";
+
+        // Clear marks in the array
+        marks = [];
+
+        // Clear local storage
+        localStorage.removeItem("marks");
+
+        console.log("Marks cleared");
+
+        updateDetailsTable();
+      });
+
+      // Load marks on page load
+      window.addEventListener("load", function () {
+        loadMarks();
+        updateDetailsTable();
+      });
+
+      // Inside the click event handler for adding marks
+      document
+        .getElementById("myImage")
+        .addEventListener("click", function (e) {
+          if (!addingMarks) return;
+          // Generate a random unique id for the mark with 15 characters
+          let id = generateRandomString(15);
+
+          let mark = document.createElement("div");
+          mark.className = "mark";
+          mark.style.backgroundColor = selectedColor; // Changing the color
+
+          if (selectedShape === "diamond") {
+            mark.style.transform = "rotate(45deg)"; // Make it a diamond
+          } else if (selectedShape === "square") {
+            // Default square shape
+          }
+
+          mark.style.left = e.pageX + "px";
+          mark.style.top = e.pageY + "px";
+
+          // Set the id attribute of the mark
+          mark.id = id;
+
+          // Append the mark to the markContainer
+          document.getElementById("markContainer").appendChild(mark);
+
+          // Create a span element for the number
+          let numberSpan = document.createElement("span");
+          numberSpan.className = "mark-number";
+          numberSpan.textContent = marks.length + 1; // Set the number
+          numberSpan.setAttribute("data-mark-id", id); // Add a data attribute to link it with the mark
+
+          // Set the position of the number span inside the mark
+          numberSpan.style.position = "absolute";
+          numberSpan.style.left = "50%"; // Center the number horizontally
+
+          // Center the number vertically and adjust for the diamond shape
+          if (selectedShape === "diamond") {
+            numberSpan.style.top = "50%";
+            numberSpan.style.transform = "translate(-50%, -50%) rotate(-45deg)";
+          } else {
+            numberSpan.style.top = "50%"; // Center the number vertically
+            numberSpan.style.transform = "translate(-50%, -50%)";
+          }
+
+          // Append the span to the mark
+          mark.appendChild(numberSpan);
+
+          // Store the mark in the array
+          marks.push({
+            id: id,
+            x: e.pageX,
+            y: e.pageY,
+            color: selectedColor,
+            shape: selectedShape,
+            number: marks.length + 1,
+            areaName: null,
+          });
+
+          console.log("after mark added:", marks);
+          updateDetailsTable();
+        });
+
+      // Removing the removed mark detail from the marks array
+      document
+        .getElementById("markContainer")
+        .addEventListener("click", function (e) {
+          if (!addingMarks && !removingMarks) return;
+
+          // Check if the clicked element is a mark or its associated span
+          if (
+            e.target.classList.contains("mark") ||
+            e.target.classList.contains("mark-number")
+          ) {
+            let markId;
+
+            // If the clicked element is the number span, get the corresponding mark ID
+            if (e.target.classList.contains("mark-number")) {
+              markId = e.target.getAttribute("data-mark-id");
+            } else {
+              markId = e.target.id;
+            }
+
+            // Find the index of the mark in the array
+            let index = marks.findIndex((mark) => mark.id === markId);
+            if (index !== -1) {
+              // Remove the mark from the array
+              marks.splice(index, 1);
+
+              // Remove the mark element from the DOM
+              document.getElementById(markId).remove();
+
+              // Remove the corresponding number span from the DOM
+              let numberSpan = document.querySelector(
+                `.mark-number[data-mark-id="${markId}"]`
+              );
+              if (numberSpan) {
+                numberSpan.remove();
+              }
+
+              // Update the numbers based on the new order
+              updateMarkNumbers();
+              console.log("After mark removed:", marks);
+            }
+          }
+          updateDetailsTable();
+        });
+
+      // Add an additional event listener to handle clicks on number spans
+      document
+        .getElementById("markContainer")
+        .addEventListener("click", function (e) {
+          if (e.target.classList.contains("mark-number")) {
+            let markId = e.target.getAttribute("data-mark-id");
+
+            // Find the index of the mark in the array
+            let index = marks.findIndex((mark) => mark.id === markId);
+            if (index !== -1) {
+              // Remove the mark from the array
+              marks.splice(index, 1);
+
+              // Remove the mark element from the DOM
+              document.getElementById(markId).remove();
+
+              // Remove the corresponding number span from the DOM
+              e.target.remove();
+
+              // Update the numbers based on the new order
+              updateMarkNumbers();
+              console.log("After mark removed:", marks);
+            }
+          }
+        });
+
+      // Changing color to RED
+      document
+        .getElementById("redButton")
+        .addEventListener("click", function () {
+          console.log("color changed: red");
+          selectedColor = "red";
+        });
+
+      // Changing color to GREEN
+      document
+        .getElementById("greenButton")
+        .addEventListener("click", function () {
+          console.log("color changed: green");
+          selectedColor = "green";
+        });
+
+      // Changing color to BLUE
+      document
+        .getElementById("blueButton")
+        .addEventListener("click", function () {
+          console.log("color changed: blue");
+          selectedColor = "blue";
+        });
+
+      // Filter button for RED
+      document
+        .getElementById("filterRedButton")
+        .addEventListener("click", function () {
+          // Check if there are marks in local storage
+          if (localStorage.getItem("marks")) {
+            // Toggle the active class on the filterAllButton
+            this.classList.toggle("active");
+
+            // Check if the button is active
+            if (this.classList.contains("active")) {
+              // Activate the displayAllMarks function
+              filterMarksByColor("red");
+            } else {
+              // Deactivate the displayAllMarks function
+              // You can add any deactivation logic here if needed
+
+              // Call the loadMarks function when deactivating
+              loadMarks();
+            }
+          } else {
+            console.log("No marks in local storage to filter");
+          }
+        });
+
+      // Filter button for GREEN
+      document
+        .getElementById("filterGreenButton")
+        .addEventListener("click", function () {
+          // Check if there are marks in local storage
+          if (localStorage.getItem("marks")) {
+            // Toggle the active class on the filterAllButton
+            this.classList.toggle("active");
+
+            // Check if the button is active
+            if (this.classList.contains("active")) {
+              // Activate the displayAllMarks function
+              filterMarksByColor("green");
+            } else {
+              loadMarks();
+            }
+          } else {
+            console.log("No marks in local storage to filter");
+          }
+        });
+
+      // Filter button for BLUE
+      document
+        .getElementById("filterBlueButton")
+        .addEventListener("click", function () {
+          // Check if there are marks in local storage
+          if (localStorage.getItem("marks")) {
+            // Toggle the active class on the filterAllButton
+            this.classList.toggle("active");
+
+            // Check if the button is active
+            if (this.classList.contains("active")) {
+              // Activate the displayAllMarks function
+              filterMarksByColor("blue");
+            } else {
+              loadMarks();
+            }
+          } else {
+            console.log("No marks in local storage to filter");
+          }
+        });
+
+      // Filter button for ALL
+      document
+        .getElementById("allDefects")
+        .addEventListener("click", function () {
+          // Check if there are marks in local storage
+          if (localStorage.getItem("marks")) {
+            // Toggle the active class on the filterAllButton
+            this.classList.toggle("active");
+
+            // Check if the button is active
+            if (this.classList.contains("active")) {
+              // Activate the displayAllMarks function
+              displayAllMarks("orange");
+            } else {
+              loadMarks();
+            }
+          } else {
+            console.log("No marks in local storage to filter");
+          }
+        });
+
+      //Changing shape to diamond
+      document
+        .getElementById("circleButton")
+        .addEventListener("click", function () {
+          console.log("shape changed: diamond");
+          selectedShape = "diamond";
+        });
+
+      //Changing shape to SQUARE
+      document
+        .getElementById("squareButton")
+        .addEventListener("click", function () {
+          console.log("shape changed: square");
+          selectedShape = "square";
+        });
+
+      // AREA
+      // MARKING
+      // STARTS
+      // FROM
+      // HERE
+
+      function loadRectanglesFromLocalStorage() {
+        const savedRectangles =
+          JSON.parse(localStorage.getItem("rectangles")) || [];
+        savedRectangles.forEach((savedRectangle) => {
+          const newRectangle = document.createElement("div");
+          newRectangle.classList.add("rectangle");
+          newRectangle.style.width = savedRectangle.size.width;
+          newRectangle.style.height = savedRectangle.size.height;
+          newRectangle.style.left = savedRectangle.initialPosition.left;
+          newRectangle.style.top = savedRectangle.initialPosition.top;
+          newRectangle.style.backgroundColor = savedRectangle.color;
+          newRectangle.style.border = `2px solid ${savedRectangle.color}`;
+          newRectangle.style.transformOrigin = "center";
+          newRectangle.style.transform = `rotate(${savedRectangle.rotation}rad)`;
+
+          const rotateIcon = document.createElement("div");
+          rotateIcon.classList.add("rotate-icon");
+          rotateIcon.innerHTML = "&#8635;";
+          rotateIcon.addEventListener("mousedown", startRotate);
+          rotateIcon.addEventListener("touchstart", startRotate);
+          newRectangle.appendChild(rotateIcon);
+
+          newRectangle.addEventListener("mousedown", selectRectangle);
+          newRectangle.addEventListener("touchstart", selectRectangle);
+          document.body.appendChild(newRectangle);
+
+          rectangles.push({
+            rectangle: newRectangle,
+            rotateIcon: rotateIcon,
+            color: savedRectangle.color,
+            areaName: savedRectangle.areaName,
+            initialPosition: savedRectangle.initialPosition,
+            size: savedRectangle.size,
+            rotation: savedRectangle.rotation,
+          });
+        });
+      }
+
+      // to display the area
+      function displayArea() {
+        console.log("Display area hit");
+
+        // Access the rectangles and display them
+        // loadRectanglesFromLocalStorage();
+        rectangles.forEach((rectangle) => {
+          const areaElement = rectangle.rectangle;
+          console.log("Area:", rectangle);
+
+          // Set the style properties for the areaElement
+          areaElement.style.left = rectangle.initialPosition.left;
+          areaElement.style.top = rectangle.initialPosition.top;
+          areaElement.style.width = rectangle.size.width;
+          areaElement.style.height = rectangle.size.height;
+          areaElement.style.transformOrigin = "center";
+          areaElement.style.transform = `rotate(${rectangle.rotation}rad)`;
+        });
+
+        rectangles.forEach((rectangle) => {
+          rectangle.rectangle.remove();
+        });
+
+        // Clear the rectangles array
+        rectangles = [];
+
+        // Load rectangles from local storage
+        loadRectanglesFromLocalStorage();
+
+        // Add click event listener to each rectangle to delete it on click
+        rectangles.forEach((rectangle) => {
+          rectangle.rectangle.addEventListener("click", function (event) {
+            event.stopPropagation();
+            const index = rectangles.findIndex(
+              (rect) => rect.rectangle === event.target
+            );
+            if (index !== -1) {
+              deletedAreaName = rectangles[index].areaName;
+
+              rectangles.splice(index, 1);
+              event.target.remove();
+              deletedAreaNameBool = true;
+            }
+          });
+        });
+      }
+
+      // remove the removed areaName from the areaNames array
+      function removeFromAreaNames(areaName) {
+        let areaNames = JSON.parse(localStorage.getItem("areaNames")) || [];
+        const index = areaNames.indexOf(areaName);
+        if (index !== -1) {
+          areaNames.splice(index, 1);
+          localStorage.setItem("areaNames", JSON.stringify(areaNames));
+        }
+      }
+
+      function addRectangle() {
+        const newRectangle = document.createElement("div");
+        newRectangle.classList.add("rectangle");
+        newRectangle.style.width = "100px";
+        newRectangle.style.height = "80px";
+        newRectangle.style.left = "50px";
+        newRectangle.style.top = "50px";
+
+        const rotateIcon = document.createElement("div");
+        rotateIcon.classList.add("rotate-icon");
+        rotateIcon.innerHTML = "&#8635;"; // Rotate icon character
+        rotateIcon.addEventListener("mousedown", startRotate);
+        rotateIcon.addEventListener("touchstart", startRotate);
+
+        newRectangle.appendChild(rotateIcon);
+
+        newRectangle.addEventListener("mousedown", selectRectangle);
+        newRectangle.addEventListener("touchstart", selectRectangle);
+        document.body.appendChild(newRectangle);
+
+        const randomColor = getRandomColor();
+        newRectangle.style.border = `2px solid ${randomColor}`;
+        newRectangle.style.backgroundColor = randomColor; // Set the background color
+
+        const colorSquare = document.createElement("div");
+        colorSquare.classList.add("color-square");
+        colorSquare.style.backgroundColor = randomColor;
+
+        const areaName = areaNameInput.value;
+        const areaInfo = document.createElement("div");
+        areaInfo.innerHTML = `<strong>${areaName}</strong>: `;
+        areaInfo.appendChild(colorSquare);
+        areaInfoDiv.appendChild(areaInfo);
+
+        rectangles.push({
+          rectangle: newRectangle,
+          rotateIcon: rotateIcon,
+          color: randomColor,
+          areaName: areaName,
+          initialPosition: { left: "50px", top: "50px" },
+          size: { width: "100px", height: "80px" },
+          rotation: 0,
+        });
+        areaNameInput.value = "";
+      }
+
+      // random colors for the rectangle
+      function getRandomColor() {
+        const letters = "0123456789ABCDEF";
+        let color = "#";
+        for (let i = 0; i < 6; i++) {
+          color += letters[Math.floor(Math.random() * 16)];
+        }
+        return color;
+      }
+
+      // selecting the ractangles in order to resize and move
+      function selectRectangle(event) {
+        event.preventDefault();
+        selectedRectangle = event.target;
+        startX = event.clientX || event.touches[0].clientX;
+        startY = event.clientY || event.touches[0].clientY;
+        startOffsetX = startX - selectedRectangle.getBoundingClientRect().left;
+        startOffsetY = startY - selectedRectangle.getBoundingClientRect().top;
+
+        if (resizing) {
+          document.addEventListener("mousemove", resizeRectangle);
+          document.addEventListener("mouseup", stopResize);
+          document.addEventListener("touchmove", resizeRectangle);
+          document.addEventListener("touchend", stopResize);
+        } else {
+          document.addEventListener("mousemove", moveRectangle);
+          document.addEventListener("mouseup", stopMove);
+          document.addEventListener("touchmove", moveRectangle);
+          document.addEventListener("touchend", stopMove);
+        }
+      }
+
+      function startRotate(event) {
+        event.stopPropagation(); // Prevent selecting the rectangle when clicking the rotate icon
+        startX = event.clientX || event.touches[0].clientX;
+        startY = event.clientY || event.touches[0].clientY;
+        startAngle =
+          rectangles.find((rect) => rect.rectangle === selectedRectangle)
+            .rotation || 0;
+        document.addEventListener("mousemove", rotateRectangle);
+        document.addEventListener("mouseup", stopRotate);
+        document.addEventListener("touchmove", rotateRectangle);
+        document.addEventListener("touchend", stopRotate);
+      }
+
+      function rotateRectangle(event) {
+        event.preventDefault();
+        const clientX = event.clientX || event.touches[0].clientX;
+        const clientY = event.clientY || event.touches[0].clientY;
+
+        const deltaX = clientX - startX;
+        const deltaY = clientY - startY;
+
+        const angle = Math.atan2(deltaY, deltaX) + startAngle;
+
+        selectedRectangle.style.transform = `rotate(${angle}rad)`;
+
+        // Update the rotation angle in the rectangles array
+        const rectIndex = rectangles.findIndex(
+          (rect) => rect.rectangle === selectedRectangle
+        );
+        if (rectIndex !== -1) {
+          rectangles[rectIndex].rotation = angle;
+        }
+      }
+
+      function stopRotate() {
+        document.removeEventListener("mousemove", rotateRectangle);
+        document.removeEventListener("mouseup", stopRotate);
+        document.removeEventListener("touchmove", rotateRectangle);
+        document.removeEventListener("touchend", stopRotate);
+      }
+
+      function toggleResize() {
+        resizing = !resizing;
+        resizeButton.classList.toggle("active", resizing);
+      }
+
+      function resizeRectangle(event) {
+        event.preventDefault();
+        const clientX = event.clientX || event.touches[0].clientX;
+        const clientY = event.clientY || event.touches[0].clientY;
+
+        const deltaX = clientX - startX;
+        const deltaY = clientY - startY;
+
+        const newWidth = parseInt(selectedRectangle.style.width) + deltaX;
+        const newHeight = parseInt(selectedRectangle.style.height) + deltaY;
+
+        selectedRectangle.style.width = `${newWidth}px`;
+        selectedRectangle.style.height = `${newHeight}px`;
+
+        // Update the size values in the rectangles array
+        const rectIndex = rectangles.findIndex(
+          (rect) => rect.rectangle === selectedRectangle
+        );
+        if (rectIndex !== -1) {
+          rectangles[rectIndex].size.width = `${newWidth}px`;
+          rectangles[rectIndex].size.height = `${newHeight}px`;
+        }
+
+        startX = clientX;
+        startY = clientY;
+      }
+
+      function stopResize() {
+        document.removeEventListener("mousemove", resizeRectangle);
+        document.removeEventListener("mouseup", stopResize);
+        document.removeEventListener("touchmove", resizeRectangle);
+        document.removeEventListener("touchend", stopResize);
+      }
+
+      function moveRectangle(event) {
+        event.preventDefault();
+        const clientX = event.clientX || event.touches[0].clientX;
+        const clientY = event.clientY || event.touches[0].clientY;
+
+        const offsetX = clientX - startOffsetX;
+        const offsetY = clientY - startOffsetY;
+
+        selectedRectangle.style.left = `${offsetX}px`;
+        selectedRectangle.style.top = `${offsetY}px`;
+
+        // Update the position values in the rectangles array
+        const rectIndex = rectangles.findIndex(
+          (rect) => rect.rectangle === selectedRectangle
+        );
+        if (rectIndex !== -1) {
+          rectangles[rectIndex].initialPosition.left = `${offsetX}px`;
+          rectangles[rectIndex].initialPosition.top = `${offsetY}px`;
+        }
+      }
+
+      function stopMove() {
+        document.removeEventListener("mousemove", moveRectangle);
+        document.removeEventListener("mouseup", stopMove);
+        document.removeEventListener("touchmove", moveRectangle);
+        document.removeEventListener("touchend", stopMove);
+      }
+
+      // saving rectangles to the local storage
+      function saveRectangles() {
+        let rotatedRectangles = rectangles.map((rect) => {
+          const { left, top } = rect.rectangle.getBoundingClientRect();
+          const { width, height } = rect.size;
+          const rotation = rect.rotation;
+
+          // Calculate the coordinates of the four vertices after rotation
+          const vertices = calculateRotatedVertices(
+            left,
+            top,
+            parseFloat(width),
+            parseFloat(height),
+            rotation
+          );
+
+          return {
+            ...rect,
+            vertices: vertices,
+          };
+        });
+
+        let savedRectangles = [];
+
+        // Push new rectangle data into the array
+        savedRectangles = savedRectangles.concat(rotatedRectangles);
+
+        // Save the updated rectangles back to local storage
+        localStorage.setItem("rectangles", JSON.stringify(savedRectangles));
+
+        // Retrieve existing area names from local storage
+        let areaNames = JSON.parse(localStorage.getItem("areaNames")) || [];
+
+        // Extract area names from the rectangles
+        const newAreaNames = rotatedRectangles.map(
+          (rectangle) => rectangle.areaName
+        );
+
+        // Append new area names to the existing area names
+        areaNames = areaNames.concat(newAreaNames);
+
+        // Remove duplicate area names
+        areaNames = [...new Set(areaNames)];
+
+        // Save the updated area names back to local storage
+        localStorage.setItem("areaNames", JSON.stringify(areaNames));
+
+        // Clear the area information displayed on the screen
+        areaInfoDiv.innerHTML = "";
+
+        rectangles.forEach((rect) => {
+          rect.rectangle.style.display = "none";
+        });
+
+        areaNameInput.value = "";
+
+        // Display the result
+        console.log("Area Names:", areaNames);
+        console.log("Rectangles:", savedRectangles);
+
+        rotatedRectangles = [];
+
+        if (deletedAreaNameBool) {
+          removeFromAreaNames(deletedAreaName); // Remove area name from local storage
+          deletedAreaNameBool = false;
+        }
+      }
+
+      function calculateRotatedVertices(left, top, width, height, rotation) {
+        console.log(left, top, width, height, rotation);
+        const angle = rotation;
+        const cx = left + width / 2;
+        const cy = top + height / 2;
+
+        // Calculate the coordinates of the four vertices before rotation
+        const x1 = left;
+        const y1 = top;
+        const x2 = left + width;
+        const y2 = top;
+        const x3 = left + width;
+        const y3 = top + height;
+        const x4 = left;
+        const y4 = top + height;
+
+        // Calculate the coordinates of the four vertices after rotation
+        const rotatedVertices = [
+          rotatePoint(x1, y1, cx, cy, angle),
+          rotatePoint(x2, y2, cx, cy, angle),
+          rotatePoint(x3, y3, cx, cy, angle),
+          rotatePoint(x4, y4, cx, cy, angle),
+        ];
+
+        return rotatedVertices;
+      }
+
+      function rotatePoint(x, y, cx, cy, angle) {
+        const radians = angle;
+        const cos = Math.cos(radians);
+        const sin = Math.sin(radians);
+        const nx = cos * (x - cx) - sin * (y - cy) + cx;
+        const ny = sin * (x - cx) + cos * (y - cy) + cy;
+        return { x: nx, y: ny };
+      }
+    </script>
+  </body>
+</html>
